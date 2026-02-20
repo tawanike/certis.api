@@ -88,20 +88,22 @@ class DocumentService:
 
         # 1. Semantic search via pgvector
         query_embedding = await self.embeddings.aembed_query(query)
+        # Format as pgvector-compatible string: [0.1,0.2,...] with no spaces
+        embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
         semantic_result = await self.db.execute(
             text("""
                 SELECT dc.id, dc.document_id, dc.page_number, dc.content, dc.token_count,
-                       dc.embedding <=> :query_embedding AS distance, d.filename
+                       dc.embedding <=> cast(:query_embedding as vector) AS distance, d.filename
                 FROM document_chunks dc
                 JOIN documents d ON dc.document_id = d.id
                 WHERE d.matter_id = :matter_id
                   AND d.status = 'ready'
                   AND dc.embedding IS NOT NULL
-                ORDER BY dc.embedding <=> :query_embedding
+                ORDER BY dc.embedding <=> cast(:query_embedding as vector)
                 LIMIT :fetch_k
             """),
             {
-                "query_embedding": str(query_embedding),
+                "query_embedding": embedding_str,
                 "matter_id": str(matter_id),
                 "fetch_k": fetch_k,
             },

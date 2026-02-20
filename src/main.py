@@ -11,14 +11,7 @@ def create_app() -> FastAPI:
         redoc_url=f"{settings.API_V1_STR}/redoc",
     )
 
-    # Routers
-    from src.routes.v1.api import api_router
-    from src.auth.router import router as auth_router
-    
-    app.include_router(api_router, prefix=settings.API_V1_STR)
-    app.include_router(auth_router, prefix=f"{settings.API_V1_STR}/auth", tags=["auth"])
-
-    # Set all CORS enabled origins
+    # CORS — must be added before routers
     if settings.BACKEND_CORS_ORIGINS:
         app.add_middleware(
             CORSMiddleware,
@@ -27,6 +20,13 @@ def create_app() -> FastAPI:
             allow_methods=["*"],
             allow_headers=["*"],
         )
+
+    # Routers
+    from src.routes.v1.api import api_router
+    from src.auth.router import router as auth_router
+
+    app.include_router(api_router, prefix=settings.API_V1_STR)
+    app.include_router(auth_router, prefix=f"{settings.API_V1_STR}/auth", tags=["auth"])
 
     # Health Check
     @app.get("/health")

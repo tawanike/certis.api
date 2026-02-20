@@ -1,5 +1,6 @@
 from enum import Enum
 from sqlalchemy import Column, String, Integer, Text, ForeignKey, Enum as SAEnum
+from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import relationship
 from pgvector.sqlalchemy import Vector
 from src.database import Base
@@ -38,5 +39,6 @@ class DocumentChunk(Base, AuditMixin):
     content = Column(Text, nullable=False)
     embedding = Column(Vector(768), nullable=True)  # pgvector
     token_count = Column(Integer, default=0)
+    search_vector = Column(TSVECTOR, nullable=True)
 
     document = relationship("Document", back_populates="chunks")

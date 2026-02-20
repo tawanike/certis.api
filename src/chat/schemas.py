@@ -6,6 +6,8 @@ class DocumentReference(BaseModel):
     filename: str
     page_number: int
     content: str
+    document_id: Optional[str] = None
+    chunk_index: Optional[int] = None
     
 class ChatMessage(BaseModel):
     role: str # "user" or "assistant"

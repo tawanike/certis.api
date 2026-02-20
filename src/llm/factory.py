@@ -52,6 +52,20 @@ def get_vision_llm() -> ChatOllama:
     )
 
 @lru_cache()
+def get_suggestions_llm() -> ChatOllama:
+    """
+    Suggestions Engine (gemma3:12b with JSON mode).
+    Used for: Generating contextual suggested actions.
+    """
+    return ChatOllama(
+        base_url=settings.OLLAMA_BASE_URL,
+        model=settings.OLLAMA_MODEL_SECONDARY,
+        temperature=0.3,
+        format="json",
+    )
+
+
+@lru_cache()
 def get_embeddings() -> OllamaEmbeddings:
     """
     Embedding Engine (embeddinggemma).

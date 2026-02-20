@@ -5,6 +5,7 @@ import secrets
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from passlib.context import CryptContext
 
 from src.auth import models, schemas, security
@@ -94,17 +95,23 @@ class AuthService:
             tenant_id=invitation.tenant_id
         )
         
-        # Add to group if specified
-        if invitation.group_id:
-            # Logic to add to group would go here (need to handle many-to-many)
-            # For now, just create user.
-            pass
-
         self.db.add(user)
-        
+        await self.db.flush()  # Get user.id before group assignment
+
+        # Add to group if specified on the invitation
+        if invitation.group_id:
+            result = await self.db.execute(
+                select(models.Group)
+                .where(models.Group.id == invitation.group_id)
+                .options(selectinload(models.Group.users))
+            )
+            group = result.scalars().first()
+            if group:
+                group.users.append(user)
+
         # update invitation
         invitation.status = "ACCEPTED"
-        
+
         await self.db.commit()
         await self.db.refresh(user)
         return user

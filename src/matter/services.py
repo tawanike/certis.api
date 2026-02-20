@@ -51,12 +51,15 @@ class MatterService:
         jurisdictions = await self._get_jurisdictions(matter.id)
         return {**matter.__dict__, "jurisdictions": jurisdictions}
 
-    async def get_matter(self, matter_id: UUID) -> dict:
-        result = await self.db.execute(select(Matter).filter(Matter.id == matter_id))
+    async def get_matter(self, matter_id: UUID, tenant_id: UUID = None) -> dict:
+        query = select(Matter).filter(Matter.id == matter_id)
+        if tenant_id:
+            query = query.filter(Matter.tenant_id == tenant_id)
+        result = await self.db.execute(query)
         matter = result.scalars().first()
         if not matter:
             raise HTTPException(status_code=404, detail="Matter not found")
-        
+
         jurisdictions = await self._get_jurisdictions(matter_id)
         return {**matter.__dict__, "jurisdictions": jurisdictions}
 

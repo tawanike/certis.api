@@ -6,6 +6,7 @@ from src.drafting.router import router as drafting_router
 from src.briefing.router import router as briefing_router
 from src.documents.router import router as documents_router
 from src.clients.router import router as clients_router
+from src.suggestions.router import router as suggestions_router
 
 api_router = APIRouter()
 
@@ -18,4 +19,5 @@ api_router.include_router(drafting_router)
 api_router.include_router(briefing_router)
 api_router.include_router(documents_router)
 api_router.include_router(clients_router)
+api_router.include_router(suggestions_router)
 api_router.include_router(ws_router, prefix="/ws")

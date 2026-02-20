@@ -6,6 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, ConfigDict
 
 from src.database import get_db
+from src.auth.models import User
+from src.auth.dependencies import require_tenant_matter
 from src.briefing.service import BriefingService
 
 router = APIRouter(prefix="/matters", tags=["briefing"])
@@ -26,8 +28,9 @@ class BriefVersionResponse(BaseModel):
 @router.post("/{matter_id}/briefs/upload")
 async def upload_brief(
     matter_id: UUID,
+    current_user: User = Depends(require_tenant_matter),
     file: UploadFile = File(...),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     service = BriefingService(db)
     try:
@@ -42,7 +45,6 @@ async def upload_brief(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        print(f"Upload Error: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error during processing")
 
 
@@ -50,7 +52,8 @@ async def upload_brief(
 async def approve_brief(
     matter_id: UUID,
     version_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    current_user: User = Depends(require_tenant_matter),
+    db: AsyncSession = Depends(get_db),
 ):
     """Attorney approves a brief version, confirming the structured breakdown is correct."""
     service = BriefingService(db)
@@ -66,7 +69,8 @@ async def approve_brief(
 @router.get("/{matter_id}/briefs/versions", response_model=List[BriefVersionResponse])
 async def list_brief_versions(
     matter_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    current_user: User = Depends(require_tenant_matter),
+    db: AsyncSession = Depends(get_db),
 ):
     """List all brief versions for a matter."""
     service = BriefingService(db)
@@ -77,7 +81,8 @@ async def list_brief_versions(
 async def get_brief_version(
     matter_id: UUID,
     version_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    current_user: User = Depends(require_tenant_matter),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get a specific brief version."""
     service = BriefingService(db)

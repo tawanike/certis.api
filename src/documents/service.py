@@ -1,5 +1,6 @@
 import hashlib
 import logging
+from collections import defaultdict
 from uuid import UUID
 from typing import List, Optional
 
@@ -25,48 +26,21 @@ class DocumentService:
             separators=["\n\n", "\n", ". ", " ", ""],
         )
 
-    async def upload_and_process(
-        self,
-        matter_id: UUID,
-        filename: str,
-        file_content: bytes,
-        content_type: str = "application/pdf",
-    ) -> Document:
-        """Upload a document, extract pages, embed chunks, store everything."""
-        # 1. Hash for dedup
-        file_hash = hashlib.sha256(file_content).hexdigest()
+    async def process_document(self, doc: Document, file_content: bytes) -> Document:
+        """Extract pages, chunk, embed, and store for an existing Document record.
 
-        # Check for duplicate
-        existing = await self.db.execute(
-            select(Document).where(
-                Document.matter_id == matter_id,
-                Document.file_hash == file_hash,
-            )
-        )
-        if existing.scalars().first():
-            raise ValueError(f"Document already uploaded (hash: {file_hash[:12]}...)")
-
-        # 2. Create document record
-        doc = Document(
-            matter_id=matter_id,
-            filename=filename,
-            content_type=content_type,
-            file_hash=file_hash,
-            status=DocumentStatus.PROCESSING,
-        )
-        self.db.add(doc)
-        await self.db.flush()
-
+        Called from a background task after the Document row has been created
+        with status=PROCESSING.
+        """
         try:
-            # 3. Extract pages using PyPDFLoader via IngestionService
-            pages = self.ingestion.extract_pages(file_content, filename)
+            # 1. Extract pages
+            pages = self.ingestion.extract_pages(file_content, doc.filename)
             doc.total_pages = len(pages)
             doc.raw_text = "\n\n".join([p["content"] for p in pages])
 
-            # 4. Chunk and embed each page
+            # 2. Chunk each page
             all_chunks = []
             for page in pages:
-                # Split long pages into sub-chunks
                 sub_chunks = self.text_splitter.split_text(page["content"])
                 for chunk_text in sub_chunks:
                     if chunk_text.strip():
@@ -75,7 +49,7 @@ class DocumentService:
                             "content": chunk_text,
                         })
 
-            # 5. Generate embeddings in batch
+            # 3. Generate embeddings in batch
             if all_chunks:
                 texts = [c["content"] for c in all_chunks]
                 embeddings = await self.embeddings.aembed_documents(texts)
@@ -107,13 +81,14 @@ class DocumentService:
         matter_id: UUID,
         query: str,
         top_k: int = 5,
-    ) -> List[DocumentChunk]:
-        """Vector similarity search across all document chunks for a matter."""
-        # 1. Embed the query
-        query_embedding = await self.embeddings.aembed_query(query)
+        page_filter: Optional[int] = None,
+    ) -> List[dict]:
+        """Hybrid search: semantic + full-text with RRF reranking."""
+        fetch_k = top_k * 2
 
-        # 2. Cosine similarity search via pgvector
-        result = await self.db.execute(
+        # 1. Semantic search via pgvector
+        query_embedding = await self.embeddings.aembed_query(query)
+        semantic_result = await self.db.execute(
             text("""
                 SELECT dc.id, dc.document_id, dc.page_number, dc.content, dc.token_count,
                        dc.embedding <=> :query_embedding AS distance, d.filename
@@ -123,17 +98,42 @@ class DocumentService:
                   AND d.status = 'ready'
                   AND dc.embedding IS NOT NULL
                 ORDER BY dc.embedding <=> :query_embedding
-                LIMIT :top_k
+                LIMIT :fetch_k
             """),
             {
                 "query_embedding": str(query_embedding),
                 "matter_id": str(matter_id),
-                "top_k": top_k,
+                "fetch_k": fetch_k,
             },
         )
-        rows = result.fetchall()
+        semantic_rows = semantic_result.fetchall()
 
-        # Return as list of dicts with content and metadata
+        # 2. Full-text search via tsvector
+        fts_result = await self.db.execute(
+            text("""
+                SELECT dc.id, dc.document_id, dc.page_number, dc.content, dc.token_count,
+                       ts_rank(dc.search_vector, plainto_tsquery('english', :query)) AS fts_rank,
+                       d.filename
+                FROM document_chunks dc
+                JOIN documents d ON dc.document_id = d.id
+                WHERE d.matter_id = :matter_id
+                  AND d.status = 'ready'
+                  AND dc.search_vector @@ plainto_tsquery('english', :query)
+                ORDER BY fts_rank DESC
+                LIMIT :fetch_k
+            """),
+            {
+                "query": query,
+                "matter_id": str(matter_id),
+                "fetch_k": fetch_k,
+            },
+        )
+        fts_rows = fts_result.fetchall()
+
+        # 3. Merge with Reciprocal Rank Fusion
+        merged = self._rrf_merge(semantic_rows, fts_rows, top_k=top_k, page_filter=page_filter)
+
+        # 4. Return as list of dicts
         return [
             {
                 "id": str(row[0]),
@@ -144,8 +144,35 @@ class DocumentService:
                 "distance": row[5],
                 "filename": row[6],
             }
-            for row in rows
+            for row in merged
         ]
+
+    @staticmethod
+    def _rrf_merge(semantic_rows, fts_rows, k=60, top_k=5, page_filter=None):
+        """Reciprocal Rank Fusion to merge semantic and full-text results."""
+        scores = defaultdict(float)
+        metadata = {}
+
+        for rank, row in enumerate(semantic_rows):
+            chunk_id = str(row[0])
+            scores[chunk_id] += 1.0 / (k + rank + 1)
+            metadata[chunk_id] = row
+
+        for rank, row in enumerate(fts_rows):
+            chunk_id = str(row[0])
+            scores[chunk_id] += 1.0 / (k + rank + 1)
+            if chunk_id not in metadata:
+                metadata[chunk_id] = row
+
+        # Page boost: if page_filter specified, boost matching chunks
+        if page_filter is not None:
+            for chunk_id, row in metadata.items():
+                if row[2] == page_filter:  # page_number is index 2
+                    scores[chunk_id] *= 2.0
+
+        # Sort by RRF score descending, return top_k
+        ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:top_k]
+        return [metadata[chunk_id] for chunk_id, _ in ranked]
 
     async def list_documents(self, matter_id: UUID) -> List[Document]:
         """List all documents for a matter."""

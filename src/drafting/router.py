@@ -3,23 +3,28 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
+from pydantic import BaseModel
 
 from src.database import get_db
+from src.auth.models import User
+from src.auth.dependencies import require_tenant_matter
 from src.drafting.schemas import ClaimGraph, ClaimGraphVersionResponse
 from src.artifacts.models import ClaimGraphVersion
 from src.drafting.service import DraftingService
-from pydantic import BaseModel
 
 router = APIRouter(prefix="/matters", tags=["drafting"])
 
+
 class GenerateClaimsRequest(BaseModel):
     brief_version_id: Optional[UUID] = None
+
 
 @router.post("/{matter_id}/claims/generate", response_model=ClaimGraph)
 async def generate_claims_endpoint(
     matter_id: UUID,
     request: GenerateClaimsRequest,
-    db: AsyncSession = Depends(get_db)
+    current_user: User = Depends(require_tenant_matter),
+    db: AsyncSession = Depends(get_db),
 ):
     service = DraftingService(db)
     try:
@@ -30,11 +35,13 @@ async def generate_claims_endpoint(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.post("/{matter_id}/claims/{version_id}/commit", response_model=ClaimGraphVersionResponse)
 async def commit_claim_version_endpoint(
     matter_id: UUID,
     version_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    current_user: User = Depends(require_tenant_matter),
+    db: AsyncSession = Depends(get_db),
 ):
     service = DraftingService(db)
     try:
@@ -45,14 +52,16 @@ async def commit_claim_version_endpoint(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.get("/{matter_id}/claims/versions", response_model=List[ClaimGraphVersionResponse])
 async def list_claim_versions(
     matter_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    current_user: User = Depends(require_tenant_matter),
+    db: AsyncSession = Depends(get_db),
 ):
     stmt = select(ClaimGraphVersion).where(
         ClaimGraphVersion.matter_id == matter_id
     ).order_by(desc(ClaimGraphVersion.version_number))
-    
+
     result = await db.execute(stmt)
     return result.scalars().all()

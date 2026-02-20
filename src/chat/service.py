@@ -1,4 +1,5 @@
-from typing import Dict, List, Any
+import re
+from typing import Dict, List, Any, Optional
 from uuid import UUID
 from collections import defaultdict
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
@@ -19,11 +20,22 @@ class ChatService:
         self.llm = get_chat_llm()
         self.db = db
         self.system_prompt = (
-            "You are Certis, an AI patent drafting assistant. "
-            "Help the user with their patent matter. "
-            "When answering questions, use the provided document context to give accurate, specific answers. "
-            "Always cite the page number when referencing document content."
+            "You are Certis, a patent document analysis assistant. Your role is to answer "
+            "questions STRICTLY based on the uploaded documents for this matter.\n\n"
+            "Rules:\n"
+            "- ONLY use information found in the provided document context below.\n"
+            "- If the answer is not in the provided context, say \"I could not find that "
+            "information in the uploaded documents.\"\n"
+            "- NEVER fabricate, guess, or provide general knowledge not grounded in the documents.\n"
+            "- Always cite the document filename and page number for every factual claim.\n"
+            "- Quote relevant passages when appropriate.\n"
+            "- If the user references a specific page, focus your answer on content from that page."
         )
+
+    def _extract_page_number(self, message: str) -> Optional[int]:
+        """Extract page number from user message if referenced."""
+        match = re.search(r'page\s+(\d+)', message, re.IGNORECASE)
+        return int(match.group(1)) if match else None
 
     async def chat(self, matter_id: UUID, user_message: str) -> Dict[str, Any]:
         # 1. Update History with User Message
@@ -35,17 +47,24 @@ class ChatService:
         if self.db:
             try:
                 doc_service = DocumentService(self.db)
-                chunks = await doc_service.search_chunks(matter_id, user_message, top_k=5)
+                page_filter = self._extract_page_number(user_message)
+                chunks = await doc_service.search_chunks(matter_id, user_message, top_k=8, page_filter=page_filter)
                 if chunks:
                     context_parts = []
+                    page_chunk_counter: Dict[str, int] = defaultdict(int)
                     for chunk in chunks:
                         context_parts.append(
                             f"[Page {chunk['page_number']}]: {chunk['content']}"
                         )
+                        page_key = f"{chunk.get('document_id', '')}:{chunk['page_number']}"
+                        idx = page_chunk_counter[page_key]
+                        page_chunk_counter[page_key] += 1
                         references.append({
                             "filename": chunk["filename"],
                             "page_number": chunk["page_number"],
-                            "content": chunk["content"]
+                            "content": chunk["content"],
+                            "document_id": str(chunk["document_id"]) if chunk.get("document_id") else None,
+                            "chunk_index": idx,
                         })
                     context_text = "\n\n---\n\n".join(context_parts)
             except Exception:
@@ -96,17 +115,24 @@ class ChatService:
         if self.db:
             try:
                 doc_service = DocumentService(self.db)
-                chunks = await doc_service.search_chunks(matter_id, user_message, top_k=5)
+                page_filter = self._extract_page_number(user_message)
+                chunks = await doc_service.search_chunks(matter_id, user_message, top_k=8, page_filter=page_filter)
                 if chunks:
                     context_parts = []
+                    page_chunk_counter: Dict[str, int] = defaultdict(int)
                     for chunk in chunks:
                         context_parts.append(
                             f"[Page {chunk['page_number']}]: {chunk['content']}"
                         )
+                        page_key = f"{chunk.get('document_id', '')}:{chunk['page_number']}"
+                        idx = page_chunk_counter[page_key]
+                        page_chunk_counter[page_key] += 1
                         references.append({
                             "filename": chunk["filename"],
                             "page_number": chunk["page_number"],
-                            "content": chunk["content"]
+                            "content": chunk["content"],
+                            "document_id": str(chunk["document_id"]) if chunk.get("document_id") else None,
+                            "chunk_index": idx,
                         })
                     context_text = "\n\n---\n\n".join(context_parts)
             except Exception:

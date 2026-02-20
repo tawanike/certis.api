@@ -37,7 +37,7 @@ async def login_access_token(
     
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = security.create_access_token(
-        data={"sub": user.email},
+        data={"sub": user.email, "tenant_id": str(user.tenant_id)},
         expires_delta=access_token_expires
     )
     return {
@@ -95,7 +95,7 @@ async def register(
         # Log them in immediately
         access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = security.create_access_token(
-            data={"sub": user.email},
+            data={"sub": user.email, "tenant_id": str(user.tenant_id)},
             expires_delta=access_token_expires
         )
         return {

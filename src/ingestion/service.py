@@ -1,9 +1,11 @@
 import io
+import base64
 import hashlib
 from typing import List
 from langchain_community.document_loaders.parsers.pdf import PyPDFParser
 from langchain_core.document_loaders import Blob
 from docx import Document as DocxDocument
+import fitz  # pymupdf
 
 
 class IngestionService:
@@ -65,3 +67,31 @@ class IngestionService:
                 page_num = doc.metadata.get("page", 0) + 1  # PyPDFParser is 0-indexed
                 pages.append({"page_number": page_num, "content": text})
         return pages
+
+    def extract_images(self, file_content: bytes, filename: str) -> List[dict]:
+        """
+        Extract page images from PDF pages that contain embedded images/diagrams.
+        Returns list of {"page_number": int, "image_bytes": bytes, "image_base64": str}.
+        Non-PDF files return an empty list.
+        """
+        if not filename.lower().endswith('.pdf'):
+            return []
+
+        images = []
+        doc = fitz.open(stream=file_content, filetype="pdf")
+        try:
+            for page_num, page in enumerate(doc, start=1):
+                if not page.get_images():
+                    continue
+                # Render the page to a PNG pixmap
+                pixmap = page.get_pixmap(dpi=150)
+                image_bytes = pixmap.tobytes("png")
+                images.append({
+                    "page_number": page_num,
+                    "image_bytes": image_bytes,
+                    "image_base64": base64.b64encode(image_bytes).decode("utf-8"),
+                })
+        finally:
+            doc.close()
+
+        return images

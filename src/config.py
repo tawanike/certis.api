@@ -45,8 +45,55 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL_PRIMARY: str = "gpt-oss:20b"
     OLLAMA_MODEL_SECONDARY: str = "gemma3:12b"
+    OLLAMA_MODEL_CHAT: str = "deepseek-r1:14b"
     OLLAMA_MODEL_EMBEDDING: str = "embeddinggemma"
     OLLAMA_MODEL_VISION: str = "granite3.2-vision"
+    OLLAMA_MODEL_SUGGESTIONS: str = "gemma3:12b"
+
+    # OpenAI (direct API)
+    OPENAI_API_KEY: str | None = None
+    OPENAI_MODEL_PRIMARY: str = "gpt-4o"
+    OPENAI_MODEL_SECONDARY: str = "gpt-4o-mini"
+    OPENAI_MODEL_CHAT: str = "gpt-4o"
+    OPENAI_MODEL_VISION: str = "gpt-4o"
+    OPENAI_MODEL_SUGGESTIONS: str = "gpt-4o-mini"
+    OPENAI_MODEL_EMBEDDING: str = "text-embedding-3-small"
+
+    # Azure OpenAI
+    AZURE_OPENAI_API_KEY: str | None = None
+    AZURE_OPENAI_ENDPOINT: str | None = None
+    AZURE_OPENAI_API_VERSION: str = "2024-12-01-preview"
+    AZURE_OPENAI_MODEL_PRIMARY: str = "gpt-4o"
+    AZURE_OPENAI_MODEL_SECONDARY: str = "gpt-4o-mini"
+    AZURE_OPENAI_MODEL_CHAT: str = "gpt-4o"
+    AZURE_OPENAI_MODEL_VISION: str = "gpt-4o"
+    AZURE_OPENAI_MODEL_SUGGESTIONS: str = "gpt-4o-mini"
+    AZURE_OPENAI_MODEL_EMBEDDING: str = "text-embedding-3-small"
+
+    # Anthropic (direct API)
+    ANTHROPIC_API_KEY: str | None = None
+    ANTHROPIC_MODEL_PRIMARY: str = "claude-sonnet-4-20250514"
+    ANTHROPIC_MODEL_SECONDARY: str = "claude-haiku-4-5-20251001"
+    ANTHROPIC_MODEL_CHAT: str = "claude-sonnet-4-20250514"
+    ANTHROPIC_MODEL_VISION: str = "claude-sonnet-4-20250514"
+    ANTHROPIC_MODEL_SUGGESTIONS: str = "claude-sonnet-4-20250514"
+
+    # Azure AI Foundry (Anthropic models via Azure)
+    AZURE_FOUNDRY_API_KEY: str | None = None
+    AZURE_FOUNDRY_ENDPOINT: str | None = None
+    AZURE_FOUNDRY_MODEL_PRIMARY: str = "claude-sonnet-4-20250514"
+    AZURE_FOUNDRY_MODEL_SECONDARY: str = "claude-haiku-4-5-20251001"
+    AZURE_FOUNDRY_MODEL_CHAT: str = "claude-sonnet-4-20250514"
+    AZURE_FOUNDRY_MODEL_VISION: str = "claude-sonnet-4-20250514"
+    AZURE_FOUNDRY_MODEL_SUGGESTIONS: str = "claude-sonnet-4-20250514"
+
+    # Per-role provider selection (ollama | openai | azure_openai | anthropic | azure_foundry)
+    LLM_PROVIDER_PRIMARY: str = "ollama"
+    LLM_PROVIDER_SECONDARY: str = "ollama"
+    LLM_PROVIDER_CHAT: str = "ollama"
+    LLM_PROVIDER_VISION: str = "ollama"
+    LLM_PROVIDER_SUGGESTIONS: str = "ollama"
+    LLM_PROVIDER_EMBEDDING: str = "ollama"
 
     model_config = SettingsConfigDict(case_sensitive=True, env_file=".env")
 

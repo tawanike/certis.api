@@ -12,6 +12,7 @@ from src.specs.router import router as specs_router
 from src.qa.router import router as qa_router
 from src.audit.router import router as audit_router
 from src.export.router import router as export_router
+from src.llm.router import router as llm_settings_router
 
 api_router = APIRouter()
 
@@ -30,4 +31,5 @@ api_router.include_router(specs_router)
 api_router.include_router(qa_router)
 api_router.include_router(audit_router)
 api_router.include_router(export_router)
+api_router.include_router(llm_settings_router)
 api_router.include_router(ws_router, prefix="/ws")

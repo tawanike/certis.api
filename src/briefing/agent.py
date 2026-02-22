@@ -1,14 +1,14 @@
 from typing import TypedDict, List
 from langchain_core.messages import SystemMessage, HumanMessage
-from langchain_ollama import ChatOllama
 from langgraph.graph import StateGraph, END
 from pydantic import BaseModel, Field
 
-from src.config import settings
+from src.llm import get_primary_llm
 
 # --- 1. State Definition ---
 class SBDState(TypedDict):
     text: str
+    figure_analyses: List[dict]
     brief_data: dict | None
     errors: List[str]
 
@@ -62,12 +62,7 @@ def analyze_brief_node(state: SBDState):
     text = state["text"]
     
     # Initialize LLM with structured output
-    llm = ChatOllama(
-        base_url=settings.OLLAMA_BASE_URL,
-        model=settings.OLLAMA_MODEL_PRIMARY, # e.g. gpt-oss:20b
-        temperature=0,
-        format="json" 
-    )
+    llm = get_primary_llm()
     
     # Simple Prompt
     system_prompt = """You are an expert Patent Engineer. Your task is to perform a Structured Brief Decomposition (SBD) on the provided invention disclosure text.
@@ -88,9 +83,28 @@ def analyze_brief_node(state: SBDState):
     Return ONLY VALID JSON matching this structure.
     """
     
+    # Build the human message with text and any detected figures
+    human_content = f"Invention Disclosure Text:\n{text}"
+
+    figure_analyses = state.get("figure_analyses") or []
+    if figure_analyses:
+        figure_descriptions = []
+        for fig in figure_analyses:
+            components = ", ".join(fig.get("extracted_components", []))
+            figure_descriptions.append(
+                f"- Page {fig['page_number']} ({fig.get('figure_id', 'unknown')}): "
+                f"{fig.get('type', 'diagram')} — {fig.get('description', 'No description')}. "
+                f"Components: {components}"
+            )
+        human_content += (
+            "\n\nDiagrams/Figures detected in the document:\n"
+            + "\n".join(figure_descriptions)
+            + "\n\nUse these diagram analyses to populate the figures_detected field accurately."
+        )
+
     messages = [
         SystemMessage(content=system_prompt),
-        HumanMessage(content=f"Invention Disclosure Text:\n{text}")
+        HumanMessage(content=human_content)
     ]
     
     try:

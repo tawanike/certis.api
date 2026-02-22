@@ -6,6 +6,7 @@ from sqlalchemy import select, desc
 
 from src.ingestion.service import IngestionService
 from src.briefing.agent import sbd_agent
+from src.briefing.vision import analyze_figures
 from src.artifacts.briefs.models import BriefVersion
 from src.audit.models import AuditEvent, AuditEventType
 from src.matter.models import Matter, MatterState
@@ -91,10 +92,15 @@ class BriefingService:
         
         # C. Extract Text
         text = self.ingestion.extract_text(content, file.filename)
-        
+
+        # C2. Extract and analyze diagrams/figures
+        images = self.ingestion.extract_images(content, file.filename)
+        figure_analyses = await analyze_figures(images)
+
         # D. Run SBD Agent
         initial_state = {
             "text": text,
+            "figure_analyses": figure_analyses,
             "brief_data": None,
             "errors": []
         }

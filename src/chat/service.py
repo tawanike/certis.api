@@ -79,6 +79,8 @@ class ChatService:
                     "content": chunk["content"],
                     "document_id": str(chunk["document_id"]) if chunk.get("document_id") else None,
                     "chunk_index": idx,
+                    "content_type": chunk.get("content_type"),
+                    "total_pages": chunk.get("total_pages"),
                 })
             context_text = "\n\n---\n\n".join(context_parts)
         return context_text, references

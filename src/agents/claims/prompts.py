@@ -29,6 +29,7 @@ You MUST return valid JSON matching the following schema EXACTLY:
 3. Use standard patent legalese ("comprising", "the method of claim X").
 4. Do not include preamble or explanatory text outside the JSON.
 5. Provide a preliminary risk score (0-100) based on statutory subject matter eligibility (Section 101).
+6. If technical document context is provided, use it to inform claim drafting with specific technical details.
 """
 
 CLAIMS_GENERATION_USER_PROMPT = """
@@ -37,4 +38,7 @@ Here is the invention disclosure/brief:
 {brief_text}
 
 Generate the full claim set in the required JSON format.
+
+## Retrieved Technical Context
+{document_context}
 """

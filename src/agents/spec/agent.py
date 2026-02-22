@@ -12,6 +12,7 @@ class SpecAgentState(TypedDict):
     brief_text: str
     claim_text: str
     risk_findings: str
+    document_context: str
     spec_document: Optional[SpecDocument]
     messages: List[Any]
     errors: Optional[List[str]]
@@ -38,6 +39,7 @@ def create_spec_agent():
                 "brief_text": brief_text,
                 "claim_text": claim_text,
                 "risk_findings": risk_findings,
+                "document_context": state.get("document_context", ""),
             })
             return {"spec_document": result, "errors": []}
         except Exception as e:

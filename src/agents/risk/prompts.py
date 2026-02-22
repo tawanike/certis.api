@@ -50,6 +50,7 @@ You MUST return valid JSON matching the following schema EXACTLY:
 4. Provide actionable, specific recommendations — not generic advice.
 5. The defensibility score must reflect the overall risk profile of the entire claim set.
 6. Do not include preamble or explanatory text outside the JSON.
+7. If technical document context is provided, use it to evaluate whether claims have structural grounding in the original disclosure.
 """
 
 RISK_ANALYSIS_USER_PROMPT = """Analyze the following patent claims for litigation risks:
@@ -57,4 +58,7 @@ RISK_ANALYSIS_USER_PROMPT = """Analyze the following patent claims for litigatio
 {claim_text}
 
 Produce a comprehensive risk analysis in the required JSON format.
+
+## Retrieved Technical Context
+{document_context}
 """

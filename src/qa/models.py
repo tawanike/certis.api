@@ -5,23 +5,21 @@ from src.database import Base
 from src.shared.models import AuditMixin
 
 
-class RiskAnalysisVersion(Base, AuditMixin):
-    __tablename__ = "risk_analysis_versions"
+class QAReportVersion(Base, AuditMixin):
+    __tablename__ = "qa_report_versions"
 
     matter_id = Column(ForeignKey("matters.id"), nullable=False, index=True)
     version_number = Column(Integer, nullable=False)
     description = Column(String, nullable=True)
     is_authoritative = Column(Boolean, default=False)
 
-    # The structured risk analysis
-    analysis_data = Column(JSONB, nullable=False)
+    # The structured QA report
+    report_data = Column(JSONB, nullable=False)
 
-    # Track which claims were analyzed
+    # Track which claims and spec were analyzed
     claim_version_id = Column(ForeignKey("claim_graph_versions.id"), nullable=True)
-
-    # Track which spec was used for re-evaluation (null for initial risk analysis)
     spec_version_id = Column(ForeignKey("spec_versions.id"), nullable=True)
 
-    matter = relationship("Matter", back_populates="risk_versions")
+    matter = relationship("Matter", back_populates="qa_versions")
     claim_version = relationship("ClaimGraphVersion")
     spec_version = relationship("SpecVersion", foreign_keys=[spec_version_id])

@@ -37,3 +37,6 @@ class SearchResult(BaseModel):
     content: str
     token_count: int
     distance: float
+    filename: str = ""
+    content_type: str = ""
+    total_pages: int = 0

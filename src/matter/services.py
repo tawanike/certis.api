@@ -90,7 +90,8 @@ class MatterService:
             MatterState.CLAIMS_PROPOSED: [MatterState.CLAIMS_APPROVED, MatterState.BRIEF_ANALYZED],
             MatterState.CLAIMS_APPROVED: [MatterState.RISK_REVIEWED, MatterState.SPEC_GENERATED],
             MatterState.RISK_REVIEWED: [MatterState.SPEC_GENERATED, MatterState.CLAIMS_APPROVED],
-            MatterState.SPEC_GENERATED: [MatterState.QA_COMPLETE],
+            MatterState.SPEC_GENERATED: [MatterState.RISK_RE_REVIEWED, MatterState.QA_COMPLETE],
+            MatterState.RISK_RE_REVIEWED: [MatterState.QA_COMPLETE, MatterState.SPEC_GENERATED],
             MatterState.QA_COMPLETE: [MatterState.LOCKED_FOR_EXPORT, MatterState.SPEC_GENERATED],
             MatterState.LOCKED_FOR_EXPORT: []
         }

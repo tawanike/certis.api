@@ -19,6 +19,10 @@ class AnalyzeRiskRequest(BaseModel):
     claim_version_id: Optional[UUID] = None
 
 
+class ReEvaluateRiskRequest(BaseModel):
+    spec_version_id: Optional[UUID] = None
+
+
 @router.post("/{matter_id}/risk/analyze", response_model=RiskAnalysis)
 async def analyze_risk_endpoint(
     matter_id: UUID,
@@ -29,6 +33,23 @@ async def analyze_risk_endpoint(
     service = RiskService(db)
     try:
         result = await service.generate_risk_analysis(matter_id, request.claim_version_id)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{matter_id}/risk/re-evaluate", response_model=RiskAnalysis)
+async def re_evaluate_risk_endpoint(
+    matter_id: UUID,
+    request: ReEvaluateRiskRequest,
+    current_user: User = Depends(require_tenant_matter),
+    db: AsyncSession = Depends(get_db),
+):
+    service = RiskService(db)
+    try:
+        result = await service.re_evaluate_risk_post_spec(matter_id, request.spec_version_id)
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

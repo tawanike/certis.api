@@ -35,6 +35,7 @@ class MatterState(str, Enum):
     CLAIMS_APPROVED = "CLAIMS_APPROVED"
     RISK_REVIEWED = "RISK_REVIEWED"
     SPEC_GENERATED = "SPEC_GENERATED"
+    RISK_RE_REVIEWED = "RISK_RE_REVIEWED"
     QA_COMPLETE = "QA_COMPLETE"
     LOCKED_FOR_EXPORT = "LOCKED_FOR_EXPORT"
 
@@ -65,6 +66,9 @@ class Matter(Base, AuditMixin):
     claim_versions = relationship("ClaimGraphVersion", back_populates="matter", cascade="all, delete-orphan")
     spec_versions = relationship("SpecVersion", back_populates="matter", cascade="all, delete-orphan")
     risk_versions = relationship("RiskAnalysisVersion", back_populates="matter", cascade="all, delete-orphan")
+    qa_versions = relationship("QAReportVersion", back_populates="matter", cascade="all, delete-orphan")
+
+    audit_events = relationship("AuditEvent", back_populates="matter", cascade="all, delete-orphan")
 
     workstreams = relationship("Workstream", back_populates="matter", cascade="all, delete-orphan")
     documents = relationship("src.documents.models.Document", back_populates="matter", cascade="all, delete-orphan")

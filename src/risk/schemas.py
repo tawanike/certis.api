@@ -37,5 +37,6 @@ class RiskAnalysisVersionResponse(BaseModel):
     created_at: datetime
     analysis_data: Dict[str, Any]
     claim_version_id: Optional[UUID]
+    spec_version_id: Optional[UUID] = None
 
     model_config = ConfigDict(from_attributes=True)

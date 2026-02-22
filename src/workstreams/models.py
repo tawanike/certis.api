@@ -28,11 +28,13 @@ class Workstream(Base, AuditMixin):
     active_claim_version_id = Column(ForeignKey("claim_graph_versions.id"), nullable=True)
     active_spec_version_id = Column(ForeignKey("spec_versions.id"), nullable=True)
     active_risk_version_id = Column(ForeignKey("risk_analysis_versions.id"), nullable=True)
+    active_qa_version_id = Column(ForeignKey("qa_report_versions.id"), nullable=True)
 
     # Relationships
     matter = relationship("Matter", back_populates="workstreams")
-    
+
     active_brief = relationship("BriefVersion", foreign_keys=[active_brief_version_id])
     active_claims = relationship("ClaimGraphVersion", foreign_keys=[active_claim_version_id])
     active_spec = relationship("SpecVersion", foreign_keys=[active_spec_version_id])
     active_risk = relationship("RiskAnalysisVersion", foreign_keys=[active_risk_version_id])
+    active_qa = relationship("QAReportVersion", foreign_keys=[active_qa_version_id])

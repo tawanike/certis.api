@@ -1,4 +1,5 @@
 import json
+import logging
 from uuid import UUID
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,7 +11,10 @@ from src.matter.models import Matter, MatterState
 from src.workstreams.models import Workstream, WorkstreamTypeEnum
 from src.agents.claims.agent import claims_agent
 from src.agents.state import AgentState
+from src.documents.service import DocumentService
 from src.database import get_db
+
+logger = logging.getLogger(__name__)
 
 class DraftingService:
     def __init__(self, db: AsyncSession):
@@ -97,6 +101,16 @@ class DraftingService:
 
         return "\n\n".join(parts)
 
+    async def _retrieve_document_context(self, matter_id: UUID, query_text: str) -> str:
+        """Retrieve relevant document chunks as context for the agent."""
+        try:
+            doc_service = DocumentService(self.db)
+            chunks = await doc_service.search_chunks(matter_id, query_text, top_k=6)
+            return DocumentService.format_chunks_as_context(chunks)
+        except Exception as e:
+            logger.warning(f"RAG retrieval failed for matter {matter_id}: {e}")
+            return ""
+
     async def generate_claims(self, matter_id: UUID, brief_version_id: Optional[UUID] = None) -> ClaimGraph:
         """
         Invokes the Claims Architect Agent to generate a claim set
@@ -105,9 +119,15 @@ class DraftingService:
         # 1. Fetch brief data from DB
         brief_text = await self._get_brief_text(matter_id, brief_version_id)
 
+        # 1b. Retrieve document context via RAG
+        document_context = await self._retrieve_document_context(
+            matter_id, brief_text[:500]
+        )
+
         # 2. Invoke Agent
         initial_state: AgentState = {
             "brief_text": brief_text,
+            "document_context": document_context,
             "claim_graph": None,
             "messages": [],
             "errors": []

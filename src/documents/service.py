@@ -93,11 +93,12 @@ class DocumentService:
         semantic_result = await self.db.execute(
             text("""
                 SELECT dc.id, dc.document_id, dc.page_number, dc.content, dc.token_count,
-                       dc.embedding <=> cast(:query_embedding as vector) AS distance, d.filename
+                       dc.embedding <=> cast(:query_embedding as vector) AS distance,
+                       d.filename, d.content_type, d.total_pages
                 FROM document_chunks dc
                 JOIN documents d ON dc.document_id = d.id
                 WHERE d.matter_id = :matter_id
-                  AND d.status = 'ready'
+                  AND d.status = 'READY'
                   AND dc.embedding IS NOT NULL
                 ORDER BY dc.embedding <=> cast(:query_embedding as vector)
                 LIMIT :fetch_k
@@ -115,11 +116,11 @@ class DocumentService:
             text("""
                 SELECT dc.id, dc.document_id, dc.page_number, dc.content, dc.token_count,
                        ts_rank(dc.search_vector, plainto_tsquery('english', :query)) AS fts_rank,
-                       d.filename
+                       d.filename, d.content_type, d.total_pages
                 FROM document_chunks dc
                 JOIN documents d ON dc.document_id = d.id
                 WHERE d.matter_id = :matter_id
-                  AND d.status = 'ready'
+                  AND d.status = 'READY'
                   AND dc.search_vector @@ plainto_tsquery('english', :query)
                 ORDER BY fts_rank DESC
                 LIMIT :fetch_k
@@ -145,6 +146,8 @@ class DocumentService:
                 "token_count": row[4],
                 "distance": row[5],
                 "filename": row[6],
+                "content_type": row[7],
+                "total_pages": row[8],
             }
             for row in merged
         ]
@@ -175,6 +178,19 @@ class DocumentService:
         # Sort by RRF score descending, return top_k
         ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:top_k]
         return [metadata[chunk_id] for chunk_id, _ in ranked]
+
+    @staticmethod
+    def format_chunks_as_context(chunks: List[dict]) -> str:
+        """Format search result chunks into a context string for agent prompts."""
+        if not chunks:
+            return ""
+        parts = []
+        for chunk in chunks:
+            filename = chunk.get("filename", "unknown")
+            page = chunk.get("page_number", "?")
+            content = chunk.get("content", "")
+            parts.append(f"[{filename}, Page {page}]: {content}")
+        return "\n\n---\n\n".join(parts)
 
     async def list_documents(self, matter_id: UUID) -> List[Document]:
         """List all documents for a matter."""

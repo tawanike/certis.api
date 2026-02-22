@@ -23,7 +23,10 @@ def create_claims_agent():
         chain = prompt | structured_llm
         
         try:
-            result: ClaimGraph = await chain.ainvoke({"brief_text": brief})
+            result: ClaimGraph = await chain.ainvoke({
+                "brief_text": brief,
+                "document_context": state.get("document_context", ""),
+            })
             return {"claim_graph": result, "errors": []}
         except Exception as e:
             return {"errors": [str(e)]}

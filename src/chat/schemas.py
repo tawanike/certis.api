@@ -8,6 +8,8 @@ class DocumentReference(BaseModel):
     content: str
     document_id: Optional[str] = None
     chunk_index: Optional[int] = None
+    content_type: Optional[str] = None
+    total_pages: Optional[int] = None
     
 class ChatMessage(BaseModel):
     role: str # "user" or "assistant"

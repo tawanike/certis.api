@@ -22,4 +22,4 @@ class SpecVersion(Base, AuditMixin):
 
     matter = relationship("Matter", back_populates="spec_versions")
     claim_version = relationship("ClaimGraphVersion")
-    risk_version = relationship("RiskAnalysisVersion")
+    risk_version = relationship("RiskAnalysisVersion", foreign_keys=[risk_version_id])

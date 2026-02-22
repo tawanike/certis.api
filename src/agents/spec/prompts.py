@@ -42,6 +42,8 @@ Your Goal: Generate a complete patent specification document from the provided c
 
 **Output Format:**
 Return valid JSON matching the SpecDocument schema with title, sections (list of SpecParagraph), and claim_coverage mapping.
+
+If technical document context is provided, incorporate specific technical details, implementation examples, and terminology from the source documents.
 """
 
 SPEC_DRAFTING_USER_PROMPT = """Generate a complete patent specification based on the following inputs:
@@ -56,4 +58,7 @@ SPEC_DRAFTING_USER_PROMPT = """Generate a complete patent specification based on
 {risk_findings}
 
 Produce a comprehensive patent specification in the required JSON format. Ensure every claim element has adequate specification support, and pay special attention to addressing the risk findings by providing strong structural support for flagged claim elements.
+
+## Retrieved Technical Context
+{document_context}
 """

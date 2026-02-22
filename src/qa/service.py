@@ -4,25 +4,25 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 
-from src.specs.schemas import SpecDocument
-from src.artifacts.specs.models import SpecVersion
+from src.qa.schemas import QAReport
+from src.qa.models import QAReportVersion
 from src.artifacts.briefs.models import BriefVersion
 from src.artifacts.claims.models import ClaimGraphVersion
-from src.risk.models import RiskAnalysisVersion
+from src.artifacts.specs.models import SpecVersion
 from src.matter.models import Matter, MatterState
 from src.workstreams.models import Workstream, WorkstreamTypeEnum
-from src.agents.spec.agent import spec_agent, SpecAgentState
+from src.agents.qa.agent import qa_agent, QAAgentState
 from src.documents.service import DocumentService
 
 logger = logging.getLogger(__name__)
 
 
-class SpecificationService:
+class QAService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
     async def _get_brief_text(self, matter_id: UUID) -> str:
-        """Fetch the authoritative brief and format as text for the spec agent."""
+        """Fetch the authoritative brief and format as text."""
         result = await self.db.execute(
             select(BriefVersion).where(
                 BriefVersion.matter_id == matter_id,
@@ -33,12 +33,12 @@ class SpecificationService:
         if not brief:
             raise ValueError(
                 f"No approved brief found for matter {matter_id}. "
-                "The attorney must approve the brief before generating specifications."
+                "The attorney must approve the brief before running QA validation."
             )
         return self._format_brief(brief.structure_data)
 
     def _format_brief(self, structure_data: dict) -> str:
-        """Format the structured brief data into text the spec agent can consume."""
+        """Format the structured brief data into text."""
         parts = []
 
         if inv := structure_data.get("core_invention_statement"):
@@ -76,11 +76,6 @@ class SpecificationService:
             for e in effects:
                 parts.append(f"  - {e}")
 
-        if data_elements := structure_data.get("data_elements"):
-            parts.append("Data Elements:")
-            for d in data_elements:
-                parts.append(f"  - {d.get('name', '')}: {d.get('description', '')}")
-
         return "\n\n".join(parts)
 
     async def _get_claims_text(
@@ -108,7 +103,7 @@ class SpecificationService:
             if not version:
                 raise ValueError(
                     f"No approved claims found for matter {matter_id}. "
-                    "The attorney must approve the claims before generating specifications."
+                    "The attorney must approve the claims before running QA validation."
                 )
 
         return self._format_claims(version.graph_data), version.id
@@ -135,63 +130,48 @@ class SpecificationService:
 
         return "\n\n".join(parts)
 
-    async def _get_risk_findings(
-        self, matter_id: UUID, risk_version_id: Optional[UUID] = None
+    async def _get_spec_text(
+        self, matter_id: UUID, spec_version_id: Optional[UUID] = None
     ) -> tuple[str, UUID]:
-        """Fetch risk analysis and format as text. Returns (text, risk_version_id)."""
-        if risk_version_id:
+        """Fetch spec and format as text. Returns (text, spec_version_id)."""
+        if spec_version_id:
             result = await self.db.execute(
-                select(RiskAnalysisVersion).where(
-                    RiskAnalysisVersion.id == risk_version_id,
-                    RiskAnalysisVersion.matter_id == matter_id,
+                select(SpecVersion).where(
+                    SpecVersion.id == spec_version_id,
+                    SpecVersion.matter_id == matter_id,
                 )
             )
             version = result.scalar_one_or_none()
             if not version:
-                raise ValueError(f"Risk version {risk_version_id} not found for matter {matter_id}")
+                raise ValueError(f"Spec version {spec_version_id} not found for matter {matter_id}")
         else:
             result = await self.db.execute(
-                select(RiskAnalysisVersion).where(
-                    RiskAnalysisVersion.matter_id == matter_id,
-                    RiskAnalysisVersion.is_authoritative == True,
-                ).order_by(desc(RiskAnalysisVersion.version_number)).limit(1)
+                select(SpecVersion).where(
+                    SpecVersion.matter_id == matter_id,
+                    SpecVersion.is_authoritative == True,
+                ).order_by(desc(SpecVersion.version_number)).limit(1)
             )
             version = result.scalar_one_or_none()
             if not version:
                 raise ValueError(
-                    f"No approved risk analysis found for matter {matter_id}. "
-                    "The attorney must approve the risk analysis before generating specifications."
+                    f"No authoritative specification found for matter {matter_id}. "
+                    "The specification must be approved before running QA validation."
                 )
 
-        return self._format_risk_findings(version.analysis_data), version.id
+        return self._format_spec(version.content_data), version.id
 
-    def _format_risk_findings(self, analysis_data: dict) -> str:
-        """Format risk analysis data into text the spec agent can consume."""
+    def _format_spec(self, content_data: dict) -> str:
+        """Format structured spec content_data into text."""
         parts = []
-
-        score = analysis_data.get("defensibility_score")
-        if score is not None:
-            parts.append(f"Defensibility Score: {score}/100")
-
-        if summary := analysis_data.get("summary"):
-            parts.append(f"Summary: {summary}")
-
-        findings = analysis_data.get("findings", [])
-        if findings:
-            parts.append("Risk Findings:")
-            for f in findings:
-                finding_id = f.get("id", "?")
-                claim_id = f.get("claim_id", "?")
-                category = f.get("category", "unknown")
-                severity = f.get("severity", "unknown")
-                title = f.get("title", "")
-                description = f.get("description", "")
-                recommendation = f.get("recommendation", "")
-                parts.append(
-                    f"  {finding_id} (Claim {claim_id}, {category}, {severity}): "
-                    f"{title}\n    {description}\n    Recommendation: {recommendation}"
-                )
-
+        for section_key, section_value in content_data.items():
+            if isinstance(section_value, str):
+                parts.append(f"## {section_key}\n{section_value}")
+            elif isinstance(section_value, list):
+                section_text = "\n".join(str(item) for item in section_value)
+                parts.append(f"## {section_key}\n{section_text}")
+            elif isinstance(section_value, dict):
+                section_text = "\n".join(f"{k}: {v}" for k, v in section_value.items())
+                parts.append(f"## {section_key}\n{section_text}")
         return "\n\n".join(parts)
 
     async def _retrieve_document_context(self, matter_id: UUID, query_text: str) -> str:
@@ -204,23 +184,23 @@ class SpecificationService:
             logger.warning(f"RAG retrieval failed for matter {matter_id}: {e}")
             return ""
 
-    async def generate_specification(
+    async def run_qa_validation(
         self,
         matter_id: UUID,
         claim_version_id: Optional[UUID] = None,
-        risk_version_id: Optional[UUID] = None,
-    ) -> SpecDocument:
+        spec_version_id: Optional[UUID] = None,
+    ) -> QAReport:
         """
-        Invokes the Spec Drafting Agent to generate a patent specification
-        and saves the result as a non-authoritative proposal.
+        Invokes the QA Agent to validate structural integrity of claims
+        against the specification and saves the result as a non-authoritative proposal.
         """
         # 1. Fetch inputs
         brief_text = await self._get_brief_text(matter_id)
         claim_text, resolved_claim_version_id = await self._get_claims_text(
             matter_id, claim_version_id
         )
-        risk_findings, resolved_risk_version_id = await self._get_risk_findings(
-            matter_id, risk_version_id
+        spec_text, resolved_spec_version_id = await self._get_spec_text(
+            matter_id, spec_version_id
         )
 
         # 1b. Retrieve document context via RAG
@@ -229,28 +209,28 @@ class SpecificationService:
         )
 
         # 2. Invoke Agent
-        initial_state: SpecAgentState = {
-            "brief_text": brief_text,
+        initial_state: QAAgentState = {
             "claim_text": claim_text,
-            "risk_findings": risk_findings,
+            "spec_text": spec_text,
+            "brief_text": brief_text,
             "document_context": document_context,
-            "spec_document": None,
+            "qa_report": None,
             "messages": [],
             "errors": [],
         }
 
-        final_state = await spec_agent.ainvoke(initial_state)
+        final_state = await qa_agent.ainvoke(initial_state)
 
         if final_state.get("errors"):
             raise ValueError(f"Agent failed: {final_state['errors']}")
 
-        spec_document: SpecDocument = final_state["spec_document"]
+        qa_report: QAReport = final_state["qa_report"]
 
         # 3. Determine Version Number
         stmt = (
-            select(SpecVersion)
-            .where(SpecVersion.matter_id == matter_id)
-            .order_by(desc(SpecVersion.version_number))
+            select(QAReportVersion)
+            .where(QAReportVersion.matter_id == matter_id)
+            .order_by(desc(QAReportVersion.version_number))
             .limit(1)
         )
         result = await self.db.execute(stmt)
@@ -258,14 +238,14 @@ class SpecificationService:
         next_version = (latest_version.version_number + 1) if latest_version else 1
 
         # 4. Persist as Proposal (Non-Authoritative)
-        proposal = SpecVersion(
+        proposal = QAReportVersion(
             matter_id=matter_id,
             version_number=next_version,
-            description="AI Generated Specification",
-            content_data=spec_document.model_dump(),
+            description="AI Generated QA Validation",
+            report_data=qa_report.model_dump(),
             is_authoritative=False,
             claim_version_id=resolved_claim_version_id,
-            risk_version_id=resolved_risk_version_id,
+            spec_version_id=resolved_spec_version_id,
         )
         self.db.add(proposal)
         await self.db.flush()
@@ -279,21 +259,22 @@ class SpecificationService:
         )
         workstream = ws_result.scalar_one_or_none()
         if workstream:
-            workstream.active_spec_version_id = proposal.id
+            workstream.active_qa_version_id = proposal.id
 
         await self.db.commit()
         await self.db.refresh(proposal)
 
-        return spec_document
+        return qa_report
 
-    async def commit_version(self, matter_id: UUID, version_id: UUID) -> SpecVersion:
+    async def commit_version(self, matter_id: UUID, version_id: UUID) -> QAReportVersion:
         """
-        Promotes a specific spec version to authoritative
-        and advances matter state to SPEC_GENERATED.
+        Promotes a specific QA report version to authoritative
+        and advances matter state to QA_COMPLETE.
+        Rejects commit if the report has blocking errors (can_export == False).
         """
-        stmt = select(SpecVersion).where(
-            SpecVersion.id == version_id,
-            SpecVersion.matter_id == matter_id,
+        stmt = select(QAReportVersion).where(
+            QAReportVersion.id == version_id,
+            QAReportVersion.matter_id == matter_id,
         )
         result = await self.db.execute(stmt)
         version = result.scalar_one_or_none()
@@ -301,12 +282,21 @@ class SpecificationService:
         if not version:
             raise ValueError("Version not found")
 
+        # Enforce: cannot commit if there are blocking errors
+        report_data = version.report_data
+        if not report_data.get("can_export", False):
+            raise ValueError(
+                "Cannot commit QA report with blocking errors. "
+                f"There are {report_data.get('total_errors', 0)} unresolved error(s). "
+                "Resolve all errors and re-run QA validation before committing."
+            )
+
         version.is_authoritative = True
 
-        # Update Matter State -> SPEC_GENERATED
+        # Update Matter State
         matter = await self.db.get(Matter, matter_id)
-        if matter and matter.status == MatterState.RISK_REVIEWED:
-            matter.status = MatterState.SPEC_GENERATED
+        if matter and matter.status == MatterState.RISK_RE_REVIEWED:
+            matter.status = MatterState.QA_COMPLETE
 
         # Update Workstream pointer
         ws_result = await self.db.execute(
@@ -317,7 +307,7 @@ class SpecificationService:
         )
         workstream = ws_result.scalar_one_or_none()
         if workstream:
-            workstream.active_spec_version_id = version.id
+            workstream.active_qa_version_id = version.id
 
         await self.db.commit()
         await self.db.refresh(version)

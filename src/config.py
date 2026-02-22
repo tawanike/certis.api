@@ -87,6 +87,12 @@ class Settings(BaseSettings):
     AZURE_FOUNDRY_MODEL_VISION: str = "claude-sonnet-4-20250514"
     AZURE_FOUNDRY_MODEL_SUGGESTIONS: str = "claude-sonnet-4-20250514"
 
+    # LangSmith (observability)
+    LANGCHAIN_CALLBACKS_BACKGROUND: str | None = None
+    LANGSMITH_TRACING: str | None = None
+    LANGSMITH_API_KEY: str | None = None
+    LANGSMITH_PROJECT: str | None = None
+
     # Per-role provider selection (ollama | openai | azure_openai | anthropic | azure_foundry)
     LLM_PROVIDER_PRIMARY: str = "azure_foundry"
     LLM_PROVIDER_SECONDARY: str = "azure_foundry"

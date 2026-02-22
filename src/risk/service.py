@@ -8,6 +8,7 @@ from src.risk.schemas import RiskAnalysis
 from src.risk.models import RiskAnalysisVersion
 from src.artifacts.claims.models import ClaimGraphVersion
 from src.artifacts.specs.models import SpecVersion
+from src.audit.models import AuditEvent, AuditEventType
 from src.matter.models import Matter, MatterState
 from src.workstreams.models import Workstream, WorkstreamTypeEnum
 from src.agents.risk.agent import risk_agent, RiskAgentState
@@ -157,6 +158,15 @@ class RiskService:
         if workstream:
             workstream.active_risk_version_id = proposal.id
 
+        # Audit event
+        self.db.add(AuditEvent(
+            matter_id=matter_id,
+            event_type=AuditEventType.RISK_ANALYZED,
+            actor_id=None,
+            artifact_version_id=proposal.id,
+            artifact_type="risk",
+        ))
+
         await self.db.commit()
         await self.db.refresh(proposal)
 
@@ -305,6 +315,15 @@ class RiskService:
         if workstream:
             workstream.active_risk_version_id = proposal.id
 
+        # Audit event
+        self.db.add(AuditEvent(
+            matter_id=matter_id,
+            event_type=AuditEventType.RISK_RE_EVALUATED,
+            actor_id=None,
+            artifact_version_id=proposal.id,
+            artifact_type="risk",
+        ))
+
         await self.db.commit()
         await self.db.refresh(proposal)
 
@@ -345,6 +364,18 @@ class RiskService:
         workstream = ws_result.scalar_one_or_none()
         if workstream:
             workstream.active_risk_version_id = version.id
+
+        # Audit event — distinguish initial risk commit vs post-spec re-eval commit
+        event_type = AuditEventType.RISK_COMMITTED
+        if matter and matter.status == MatterState.SPEC_GENERATED:
+            event_type = AuditEventType.RISK_RE_EVAL_COMMITTED
+        self.db.add(AuditEvent(
+            matter_id=matter_id,
+            event_type=event_type,
+            actor_id=None,
+            artifact_version_id=version.id,
+            artifact_type="risk",
+        ))
 
         await self.db.commit()
         await self.db.refresh(version)

@@ -8,6 +8,7 @@ from src.specs.schemas import SpecDocument
 from src.artifacts.specs.models import SpecVersion
 from src.artifacts.briefs.models import BriefVersion
 from src.artifacts.claims.models import ClaimGraphVersion
+from src.audit.models import AuditEvent, AuditEventType
 from src.risk.models import RiskAnalysisVersion
 from src.matter.models import Matter, MatterState
 from src.workstreams.models import Workstream, WorkstreamTypeEnum
@@ -281,6 +282,15 @@ class SpecificationService:
         if workstream:
             workstream.active_spec_version_id = proposal.id
 
+        # Audit event
+        self.db.add(AuditEvent(
+            matter_id=matter_id,
+            event_type=AuditEventType.SPEC_GENERATED,
+            actor_id=None,
+            artifact_version_id=proposal.id,
+            artifact_type="spec",
+        ))
+
         await self.db.commit()
         await self.db.refresh(proposal)
 
@@ -318,6 +328,15 @@ class SpecificationService:
         workstream = ws_result.scalar_one_or_none()
         if workstream:
             workstream.active_spec_version_id = version.id
+
+        # Audit event
+        self.db.add(AuditEvent(
+            matter_id=matter_id,
+            event_type=AuditEventType.SPEC_COMMITTED,
+            actor_id=None,
+            artifact_version_id=version.id,
+            artifact_type="spec",
+        ))
 
         await self.db.commit()
         await self.db.refresh(version)

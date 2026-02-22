@@ -182,20 +182,34 @@ class ExportService:
             return
 
         content = spec.content_data
+        paragraphs = content.get("sections", [])
 
-        sections = [
-            ("Background of the Invention", "background"),
-            ("Summary of the Invention", "summary"),
-            ("Detailed Description of Preferred Embodiments", "detailed_description"),
+        # Group paragraphs by their section field
+        from collections import defaultdict
+        grouped: dict[str, list[dict]] = defaultdict(list)
+        for para in paragraphs:
+            grouped[para.get("section", "detailed_description")].append(para)
+
+        # Map section types to patent headings, in order
+        section_headings = [
+            ("technical_field", "Technical Field"),
+            ("background", "Background of the Invention"),
+            ("summary", "Summary of the Invention"),
+            ("brief_description_of_drawings", "Brief Description of the Drawings"),
+            ("detailed_description", "Detailed Description of Preferred Embodiments"),
+            ("definitions", "Definitions"),
+            ("figure_descriptions", "Description of Figures"),
         ]
 
-        for heading, key in sections:
-            text = content.get(key, "")
-            if text:
-                doc.add_heading(heading, level=1)
-                for paragraph_text in text.split("\n\n"):
-                    if paragraph_text.strip():
-                        doc.add_paragraph(paragraph_text.strip())
+        for section_key, heading in section_headings:
+            section_paras = grouped.get(section_key, [])
+            if not section_paras:
+                continue
+            doc.add_heading(heading, level=1)
+            for para in section_paras:
+                text = para.get("text", "").strip()
+                if text:
+                    doc.add_paragraph(text)
 
         doc.add_page_break()
 
@@ -203,9 +217,14 @@ class ExportService:
         doc.add_heading("Abstract", level=1)
 
         if spec and spec.content_data:
-            abstract_text = spec.content_data.get("abstract", "")
-            if abstract_text:
-                doc.add_paragraph(abstract_text)
+            paragraphs = spec.content_data.get("sections", [])
+            abstract_texts = [
+                p.get("text", "").strip()
+                for p in paragraphs
+                if p.get("section") == "abstract" and p.get("text", "").strip()
+            ]
+            if abstract_texts:
+                doc.add_paragraph(" ".join(abstract_texts))
                 return
 
         doc.add_paragraph("No abstract available.")

@@ -9,6 +9,7 @@ from src.qa.models import QAReportVersion
 from src.artifacts.briefs.models import BriefVersion
 from src.artifacts.claims.models import ClaimGraphVersion
 from src.artifacts.specs.models import SpecVersion
+from src.audit.models import AuditEvent, AuditEventType
 from src.matter.models import Matter, MatterState
 from src.workstreams.models import Workstream, WorkstreamTypeEnum
 from src.agents.qa.agent import qa_agent, QAAgentState
@@ -261,6 +262,15 @@ class QAService:
         if workstream:
             workstream.active_qa_version_id = proposal.id
 
+        # Audit event
+        self.db.add(AuditEvent(
+            matter_id=matter_id,
+            event_type=AuditEventType.QA_VALIDATED,
+            actor_id=None,
+            artifact_version_id=proposal.id,
+            artifact_type="qa",
+        ))
+
         await self.db.commit()
         await self.db.refresh(proposal)
 
@@ -308,6 +318,15 @@ class QAService:
         workstream = ws_result.scalar_one_or_none()
         if workstream:
             workstream.active_qa_version_id = version.id
+
+        # Audit event
+        self.db.add(AuditEvent(
+            matter_id=matter_id,
+            event_type=AuditEventType.QA_COMMITTED,
+            actor_id=None,
+            artifact_version_id=version.id,
+            artifact_type="qa",
+        ))
 
         await self.db.commit()
         await self.db.refresh(version)

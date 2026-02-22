@@ -7,6 +7,7 @@ from sqlalchemy import select, desc
 from src.ingestion.service import IngestionService
 from src.briefing.agent import sbd_agent
 from src.artifacts.briefs.models import BriefVersion
+from src.audit.models import AuditEvent, AuditEventType
 from src.matter.models import Matter, MatterState
 from src.workstreams.models import Workstream, WorkstreamTypeEnum
 
@@ -42,6 +43,15 @@ class BriefingService:
         workstream = ws_result.scalar_one_or_none()
         if workstream:
             workstream.active_brief_version_id = version.id
+
+        # Audit event
+        self.db.add(AuditEvent(
+            matter_id=matter_id,
+            event_type=AuditEventType.BRIEF_APPROVED,
+            actor_id=None,
+            artifact_version_id=version.id,
+            artifact_type="brief",
+        ))
 
         await self.db.commit()
         await self.db.refresh(version)
@@ -145,7 +155,16 @@ class BriefingService:
         matter = await self.db.get(Matter, matter_id)
         if matter.status == MatterState.CREATED:
             matter.status = MatterState.BRIEF_ANALYZED
-            
+
+        # Audit event
+        self.db.add(AuditEvent(
+            matter_id=matter_id,
+            event_type=AuditEventType.BRIEF_UPLOADED,
+            actor_id=None,
+            artifact_version_id=new_version.id,
+            artifact_type="brief",
+        ))
+
         await self.db.commit()
         await self.db.refresh(new_version)
         

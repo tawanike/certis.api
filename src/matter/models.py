@@ -64,6 +64,7 @@ class Matter(Base, AuditMixin):
     brief_versions = relationship("BriefVersion", back_populates="matter", cascade="all, delete-orphan")
     claim_versions = relationship("ClaimGraphVersion", back_populates="matter", cascade="all, delete-orphan")
     spec_versions = relationship("SpecVersion", back_populates="matter", cascade="all, delete-orphan")
-    
+    risk_versions = relationship("RiskAnalysisVersion", back_populates="matter", cascade="all, delete-orphan")
+
     workstreams = relationship("Workstream", back_populates="matter", cascade="all, delete-orphan")
     documents = relationship("src.documents.models.Document", back_populates="matter", cascade="all, delete-orphan")

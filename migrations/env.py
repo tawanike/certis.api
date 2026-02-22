@@ -21,6 +21,7 @@ from src.artifacts.models import ClaimGraphVersion, BriefVersion, SpecVersion
 from src.workstreams.models import Workstream
 from src.clients.models import Client
 from src.documents.models import Document, DocumentChunk
+from src.risk.models import RiskAnalysisVersion
 # from src.chat.models import * # Chat is currently in-memory/NoSQL(ish)
 
 # this is the Alembic Config object, which provides

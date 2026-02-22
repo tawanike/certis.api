@@ -120,3 +120,4 @@ Search uses hybrid retrieval:
 - Reciprocal Rank Fusion (RRF) to merge results
 - Page-number boosting when user references specific pages
 
+

@@ -37,7 +37,7 @@ class DocumentChunk(Base, AuditMixin):
     document_id = Column(ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
     page_number = Column(Integer, nullable=False)
     content = Column(Text, nullable=False)
-    embedding = Column(Vector(768), nullable=True)  # pgvector
+    embedding = Column(Vector(1536), nullable=True)  # pgvector
     token_count = Column(Integer, default=0)
     search_vector = Column(TSVECTOR, nullable=True)
 

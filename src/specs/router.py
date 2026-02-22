@@ -8,7 +8,8 @@ from pydantic import BaseModel
 from src.database import get_db
 from src.auth.models import User
 from src.auth.dependencies import require_tenant_matter
-from src.specs.schemas import SpecDocument, SpecVersionResponse
+from src.specs.schemas import SpecDocument, SpecVersionResponse, EditSpecParagraphRequest, AddSpecParagraphRequest
+from src.matter.models import Matter, MatterState
 from src.artifacts.specs.models import SpecVersion
 from src.specs.service import SpecificationService
 
@@ -87,3 +88,76 @@ async def get_spec_version(
     if not version:
         raise HTTPException(status_code=404, detail="Specification version not found")
     return version
+
+
+async def _require_spec_editable_matter(matter_id: UUID, db: AsyncSession) -> None:
+    matter = await db.get(Matter, matter_id)
+    if not matter:
+        raise HTTPException(status_code=404, detail="Matter not found")
+    allowed = {MatterState.RISK_REVIEWED, MatterState.SPEC_GENERATED, MatterState.RISK_RE_REVIEWED}
+    if matter.status not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Spec editing is only allowed when matter is in RISK_REVIEWED, SPEC_GENERATED, or RISK_RE_REVIEWED (current: {matter.status.value})",
+        )
+
+
+@router.patch(
+    "/{matter_id}/specifications/{version_id}/paragraphs/{paragraph_id}",
+    response_model=SpecVersionResponse,
+)
+async def edit_spec_paragraph_endpoint(
+    matter_id: UUID,
+    version_id: UUID,
+    paragraph_id: str,
+    request: EditSpecParagraphRequest,
+    current_user: User = Depends(require_tenant_matter),
+    db: AsyncSession = Depends(get_db),
+):
+    await _require_spec_editable_matter(matter_id, db)
+    service = SpecificationService(db)
+    try:
+        result = await service.edit_paragraph(matter_id, version_id, paragraph_id, request, current_user.id)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post(
+    "/{matter_id}/specifications/{version_id}/paragraphs",
+    response_model=SpecVersionResponse,
+)
+async def add_spec_paragraph_endpoint(
+    matter_id: UUID,
+    version_id: UUID,
+    request: AddSpecParagraphRequest,
+    current_user: User = Depends(require_tenant_matter),
+    db: AsyncSession = Depends(get_db),
+):
+    await _require_spec_editable_matter(matter_id, db)
+    service = SpecificationService(db)
+    try:
+        result = await service.add_paragraph(matter_id, version_id, request, current_user.id)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete(
+    "/{matter_id}/specifications/{version_id}/paragraphs/{paragraph_id}",
+    response_model=SpecVersionResponse,
+)
+async def delete_spec_paragraph_endpoint(
+    matter_id: UUID,
+    version_id: UUID,
+    paragraph_id: str,
+    current_user: User = Depends(require_tenant_matter),
+    db: AsyncSession = Depends(get_db),
+):
+    await _require_spec_editable_matter(matter_id, db)
+    service = SpecificationService(db)
+    try:
+        result = await service.delete_paragraph(matter_id, version_id, paragraph_id, current_user.id)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

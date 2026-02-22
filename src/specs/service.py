@@ -4,7 +4,8 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 
-from src.specs.schemas import SpecDocument
+from typing import Dict, Any
+from src.specs.schemas import SpecDocument, SpecParagraph, EditSpecParagraphRequest, AddSpecParagraphRequest
 from src.artifacts.specs.models import SpecVersion
 from src.artifacts.briefs.models import BriefVersion
 from src.artifacts.claims.models import ClaimGraphVersion
@@ -341,3 +342,192 @@ class SpecificationService:
         await self.db.commit()
         await self.db.refresh(version)
         return version
+
+    async def _fetch_source_spec_version(self, matter_id: UUID, version_id: UUID) -> SpecVersion:
+        stmt = select(SpecVersion).where(
+            SpecVersion.id == version_id,
+            SpecVersion.matter_id == matter_id,
+        )
+        result = await self.db.execute(stmt)
+        version = result.scalar_one_or_none()
+        if not version:
+            raise ValueError("Spec version not found")
+        return version
+
+    def _rebuild_claim_coverage(self, sections: list) -> Dict[str, list]:
+        coverage: Dict[str, list] = {}
+        for para in sections:
+            for ref in para.get("claim_references", []):
+                if ref not in coverage:
+                    coverage[ref] = []
+                coverage[ref].append(para["id"])
+        return coverage
+
+    async def _clone_and_save_spec_version(
+        self,
+        matter_id: UUID,
+        content_data: dict,
+        description: str,
+        actor_id: Optional[UUID],
+        detail: Dict[str, Any],
+        source_version: SpecVersion,
+    ) -> SpecVersion:
+        # Rebuild claim_coverage from sections
+        content_data["claim_coverage"] = self._rebuild_claim_coverage(content_data.get("sections", []))
+
+        # Determine next version number
+        stmt = (
+            select(SpecVersion)
+            .where(SpecVersion.matter_id == matter_id)
+            .order_by(desc(SpecVersion.version_number))
+            .limit(1)
+        )
+        result = await self.db.execute(stmt)
+        latest = result.scalar_one_or_none()
+        next_version = (latest.version_number + 1) if latest else 1
+
+        proposal = SpecVersion(
+            matter_id=matter_id,
+            version_number=next_version,
+            description=description,
+            content_data=content_data,
+            is_authoritative=False,
+            claim_version_id=source_version.claim_version_id,
+            risk_version_id=source_version.risk_version_id,
+        )
+        self.db.add(proposal)
+        await self.db.flush()
+
+        # Update workstream pointer
+        ws_result = await self.db.execute(
+            select(Workstream).where(
+                Workstream.matter_id == matter_id,
+                Workstream.workstream_type == WorkstreamTypeEnum.DRAFTING_APPLICATION,
+            ).limit(1)
+        )
+        workstream = ws_result.scalar_one_or_none()
+        if workstream:
+            workstream.active_spec_version_id = proposal.id
+
+        # Audit event
+        self.db.add(AuditEvent(
+            matter_id=matter_id,
+            event_type=AuditEventType.SPEC_EDITED,
+            actor_id=actor_id,
+            artifact_version_id=proposal.id,
+            artifact_type="spec",
+            detail=detail,
+        ))
+
+        await self.db.commit()
+        await self.db.refresh(proposal)
+        return proposal
+
+    async def edit_paragraph(
+        self,
+        matter_id: UUID,
+        version_id: UUID,
+        paragraph_id: str,
+        patch: EditSpecParagraphRequest,
+        actor_id: Optional[UUID] = None,
+    ) -> SpecVersion:
+        source = await self._fetch_source_spec_version(matter_id, version_id)
+        content = dict(source.content_data)
+        sections = list(content.get("sections", []))
+
+        target = next((p for p in sections if p["id"] == paragraph_id), None)
+        if not target:
+            raise ValueError(f"Paragraph '{paragraph_id}' not found")
+
+        updates = patch.model_dump(exclude_unset=True)
+        if not updates:
+            raise ValueError("No fields provided for edit")
+
+        for field, value in updates.items():
+            target[field] = value
+
+        content["sections"] = sections
+        return await self._clone_and_save_spec_version(
+            matter_id, content,
+            f"Edited paragraph {paragraph_id}",
+            actor_id,
+            {"operation": "edit", "paragraph_id": paragraph_id, "changes": updates},
+            source,
+        )
+
+    async def add_paragraph(
+        self,
+        matter_id: UUID,
+        version_id: UUID,
+        request: AddSpecParagraphRequest,
+        actor_id: Optional[UUID] = None,
+    ) -> SpecVersion:
+        source = await self._fetch_source_spec_version(matter_id, version_id)
+        content = dict(source.content_data)
+        sections = list(content.get("sections", []))
+
+        # Assign next paragraph ID
+        existing_ids = []
+        for p in sections:
+            pid = p.get("id", "")
+            if pid.startswith("P"):
+                try:
+                    existing_ids.append(int(pid[1:]))
+                except ValueError:
+                    pass
+        next_id = f"P{max(existing_ids, default=0) + 1}"
+
+        new_para = {
+            "id": next_id,
+            "section": request.section,
+            "text": request.text,
+            "claim_references": request.claim_references,
+        }
+
+        # Insert after specified paragraph, or at end
+        if request.after_paragraph_id:
+            idx = next((i for i, p in enumerate(sections) if p["id"] == request.after_paragraph_id), None)
+            if idx is not None:
+                sections.insert(idx + 1, new_para)
+            else:
+                sections.append(new_para)
+        else:
+            sections.append(new_para)
+
+        content["sections"] = sections
+        return await self._clone_and_save_spec_version(
+            matter_id, content,
+            f"Added paragraph {next_id}",
+            actor_id,
+            {"operation": "add", "paragraph_id": next_id},
+            source,
+        )
+
+    async def delete_paragraph(
+        self,
+        matter_id: UUID,
+        version_id: UUID,
+        paragraph_id: str,
+        actor_id: Optional[UUID] = None,
+    ) -> SpecVersion:
+        source = await self._fetch_source_spec_version(matter_id, version_id)
+        content = dict(source.content_data)
+        sections = list(content.get("sections", []))
+
+        if not any(p["id"] == paragraph_id for p in sections):
+            raise ValueError(f"Paragraph '{paragraph_id}' not found")
+
+        sections = [p for p in sections if p["id"] != paragraph_id]
+
+        # Renumber paragraphs sequentially
+        for idx, para in enumerate(sections, start=1):
+            para["id"] = f"P{idx}"
+
+        content["sections"] = sections
+        return await self._clone_and_save_spec_version(
+            matter_id, content,
+            f"Deleted paragraph {paragraph_id}",
+            actor_id,
+            {"operation": "delete", "paragraph_id": paragraph_id},
+            source,
+        )

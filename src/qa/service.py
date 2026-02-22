@@ -276,11 +276,19 @@ class QAService:
 
         return qa_report
 
-    async def commit_version(self, matter_id: UUID, version_id: UUID) -> QAReportVersion:
+    async def commit_version(
+        self,
+        matter_id: UUID,
+        version_id: UUID,
+        force_override: bool = False,
+        override_reason: str = "",
+        actor_id: UUID = None,
+    ) -> QAReportVersion:
         """
         Promotes a specific QA report version to authoritative
         and advances matter state to QA_COMPLETE.
-        Rejects commit if the report has blocking errors (can_export == False).
+        Rejects commit if the report has blocking errors (can_export == False),
+        unless force_override is True (attorney override).
         """
         stmt = select(QAReportVersion).where(
             QAReportVersion.id == version_id,
@@ -292,9 +300,9 @@ class QAService:
         if not version:
             raise ValueError("Version not found")
 
-        # Enforce: cannot commit if there are blocking errors
+        # Enforce: cannot commit if there are blocking errors (unless overridden)
         report_data = version.report_data
-        if not report_data.get("can_export", False):
+        if not report_data.get("can_export", False) and not force_override:
             raise ValueError(
                 "Cannot commit QA report with blocking errors. "
                 f"There are {report_data.get('total_errors', 0)} unresolved error(s). "
@@ -319,13 +327,22 @@ class QAService:
         if workstream:
             workstream.active_qa_version_id = version.id
 
-        # Audit event
+        # Audit event — include override details if forced
+        audit_detail = None
+        if force_override and not report_data.get("can_export", False):
+            audit_detail = {
+                "attorney_override": True,
+                "override_reason": override_reason,
+                "errors_overridden": report_data.get("total_errors", 0),
+            }
+
         self.db.add(AuditEvent(
             matter_id=matter_id,
             event_type=AuditEventType.QA_COMMITTED,
-            actor_id=None,
+            actor_id=actor_id,
             artifact_version_id=version.id,
             artifact_type="qa",
+            detail=audit_detail,
         ))
 
         await self.db.commit()

@@ -88,12 +88,12 @@ class Settings(BaseSettings):
     AZURE_FOUNDRY_MODEL_SUGGESTIONS: str = "claude-sonnet-4-20250514"
 
     # Per-role provider selection (ollama | openai | azure_openai | anthropic | azure_foundry)
-    LLM_PROVIDER_PRIMARY: str = "ollama"
-    LLM_PROVIDER_SECONDARY: str = "ollama"
-    LLM_PROVIDER_CHAT: str = "ollama"
-    LLM_PROVIDER_VISION: str = "ollama"
-    LLM_PROVIDER_SUGGESTIONS: str = "ollama"
-    LLM_PROVIDER_EMBEDDING: str = "ollama"
+    LLM_PROVIDER_PRIMARY: str = "azure_foundry"
+    LLM_PROVIDER_SECONDARY: str = "azure_foundry"
+    LLM_PROVIDER_CHAT: str = "azure_foundry"
+    LLM_PROVIDER_VISION: str = "azure_foundry"
+    LLM_PROVIDER_SUGGESTIONS: str = "azure_foundry"
+    LLM_PROVIDER_EMBEDDING: str = "azure_openai"
 
     model_config = SettingsConfigDict(case_sensitive=True, env_file=".env")
 

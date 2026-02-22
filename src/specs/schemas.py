@@ -29,6 +29,35 @@ class SpecDocument(BaseModel):
     )
 
 
+class EditSpecParagraphRequest(BaseModel):
+    text: Optional[str] = None
+    section: Optional[Literal[
+        "technical_field",
+        "background",
+        "summary",
+        "brief_description_of_drawings",
+        "detailed_description",
+        "definitions",
+        "abstract",
+    ]] = None
+    claim_references: Optional[List[str]] = None
+
+
+class AddSpecParagraphRequest(BaseModel):
+    section: Literal[
+        "technical_field",
+        "background",
+        "summary",
+        "brief_description_of_drawings",
+        "detailed_description",
+        "definitions",
+        "abstract",
+    ]
+    text: str
+    claim_references: List[str] = []
+    after_paragraph_id: Optional[str] = None
+
+
 class SpecVersionResponse(BaseModel):
     id: UUID
     matter_id: UUID

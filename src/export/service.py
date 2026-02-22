@@ -1,7 +1,9 @@
 import io
 from uuid import UUID
+from collections import defaultdict
 
 from docx import Document as DocxDocument
+from fpdf import FPDF
 from docx.shared import Pt, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from sqlalchemy import select, desc
@@ -101,6 +103,123 @@ class ExportService:
         await self.db.commit()
 
         return docx_bytes
+
+    async def generate_pdf(self, matter_id: UUID, actor_id: UUID = None) -> bytes:
+        result = await self.db.execute(
+            select(Matter).where(Matter.id == matter_id)
+        )
+        matter = result.scalar_one_or_none()
+        if not matter:
+            raise HTTPException(status_code=404, detail="Matter not found")
+
+        if matter.status != MatterState.LOCKED_FOR_EXPORT:
+            raise HTTPException(
+                status_code=400,
+                detail="Matter must be locked for export before generating PDF",
+            )
+
+        brief = await self._get_authoritative(BriefVersion, matter_id)
+        claims = await self._get_authoritative(ClaimGraphVersion, matter_id)
+        spec = await self._get_authoritative(SpecVersion, matter_id)
+
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=25)
+
+        # Title page
+        pdf.add_page()
+        pdf.set_font("Helvetica", "B", 24)
+        pdf.cell(0, 20, matter.title or "Patent Application", new_x="LMARGIN", new_y="NEXT", align="C")
+        pdf.ln(10)
+
+        pdf.set_font("Helvetica", "", 12)
+        if matter.inventors:
+            pdf.cell(0, 8, f"Inventors: {', '.join(matter.inventors)}", new_x="LMARGIN", new_y="NEXT", align="C")
+        if matter.assignee:
+            pdf.cell(0, 8, f"Assignee: {matter.assignee}", new_x="LMARGIN", new_y="NEXT", align="C")
+        if brief and brief.structure_data:
+            tech_field = brief.structure_data.get("technical_field", "")
+            if tech_field:
+                pdf.cell(0, 8, f"Technical Field: {tech_field}", new_x="LMARGIN", new_y="NEXT", align="C")
+
+        # Claims
+        pdf.add_page()
+        pdf.set_font("Helvetica", "B", 18)
+        pdf.cell(0, 12, "Claims", new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(4)
+
+        if claims and claims.graph_data:
+            nodes = claims.graph_data.get("nodes", [])
+            for i, node in enumerate(nodes, 1):
+                text = node.get("text", "")
+                pdf.set_font("Helvetica", "B", 11)
+                pdf.cell(10, 7, f"{i}.")
+                pdf.set_font("Helvetica", "", 11)
+                pdf.multi_cell(0, 7, text)
+                pdf.ln(3)
+        else:
+            pdf.set_font("Helvetica", "", 11)
+            pdf.cell(0, 8, "No claims available.", new_x="LMARGIN", new_y="NEXT")
+
+        # Specification sections
+        if spec and spec.content_data:
+            content = spec.content_data
+            paragraphs = content.get("sections", [])
+            grouped: dict[str, list[dict]] = defaultdict(list)
+            for para in paragraphs:
+                grouped[para.get("section", "detailed_description")].append(para)
+
+            section_headings = [
+                ("technical_field", "Technical Field"),
+                ("background", "Background of the Invention"),
+                ("summary", "Summary of the Invention"),
+                ("brief_description_of_drawings", "Brief Description of the Drawings"),
+                ("detailed_description", "Detailed Description of Preferred Embodiments"),
+                ("definitions", "Definitions"),
+                ("figure_descriptions", "Description of Figures"),
+            ]
+
+            for section_key, heading in section_headings:
+                section_paras = grouped.get(section_key, [])
+                if not section_paras:
+                    continue
+                pdf.add_page()
+                pdf.set_font("Helvetica", "B", 16)
+                pdf.cell(0, 12, heading, new_x="LMARGIN", new_y="NEXT")
+                pdf.ln(4)
+                pdf.set_font("Helvetica", "", 11)
+                for para in section_paras:
+                    text = para.get("text", "").strip()
+                    if text:
+                        pdf.multi_cell(0, 7, text)
+                        pdf.ln(3)
+
+            # Abstract
+            abstract_texts = [
+                p.get("text", "").strip()
+                for p in paragraphs
+                if p.get("section") == "abstract" and p.get("text", "").strip()
+            ]
+            if abstract_texts:
+                pdf.add_page()
+                pdf.set_font("Helvetica", "B", 16)
+                pdf.cell(0, 12, "Abstract", new_x="LMARGIN", new_y="NEXT")
+                pdf.ln(4)
+                pdf.set_font("Helvetica", "", 11)
+                pdf.multi_cell(0, 7, " ".join(abstract_texts))
+
+        pdf_bytes = pdf.output()
+
+        # Audit event
+        event = AuditEvent(
+            matter_id=matter_id,
+            event_type=AuditEventType.EXPORT_GENERATED,
+            actor_id=actor_id,
+            detail={"format": "pdf", "size_bytes": len(pdf_bytes)},
+        )
+        self.db.add(event)
+        await self.db.commit()
+
+        return pdf_bytes
 
     async def _get_authoritative(self, model_class, matter_id: UUID):
         stmt = (

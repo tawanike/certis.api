@@ -39,16 +39,28 @@ async def validate_qa_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class CommitQARequest(BaseModel):
+    force_override: bool = False
+    override_reason: str = ""
+
+
 @router.post("/{matter_id}/qa/{version_id}/commit", response_model=QAReportVersionResponse)
 async def commit_qa_version_endpoint(
     matter_id: UUID,
     version_id: UUID,
+    request: CommitQARequest = CommitQARequest(),
     current_user: User = Depends(require_tenant_matter),
     db: AsyncSession = Depends(get_db),
 ):
     service = QAService(db)
     try:
-        result = await service.commit_version(matter_id, version_id)
+        result = await service.commit_version(
+            matter_id,
+            version_id,
+            force_override=request.force_override,
+            override_reason=request.override_reason,
+            actor_id=current_user.id,
+        )
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

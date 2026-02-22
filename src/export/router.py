@@ -38,3 +38,20 @@ async def export_docx(
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": f"attachment; filename=patent_{matter_id}.docx"},
     )
+
+
+@router.get("/{matter_id}/export/pdf")
+async def export_pdf(
+    matter_id: UUID,
+    current_user: User = Depends(require_tenant_matter),
+    db: AsyncSession = Depends(get_db),
+):
+    service = ExportService(db)
+    pdf_bytes = await service.generate_pdf(matter_id, current_user.id)
+
+    import io
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=patent_{matter_id}.pdf"},
+    )

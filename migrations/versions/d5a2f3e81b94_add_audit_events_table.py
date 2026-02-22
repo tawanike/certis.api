@@ -17,8 +17,7 @@ down_revision: Union[str, Sequence[str], None] = 'c4a8f2e71d93'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-# Enum values for AuditEventType
-audit_event_type_enum = sa.Enum(
+AUDIT_EVENT_VALUES = (
     'BRIEF_UPLOADED', 'BRIEF_APPROVED',
     'CLAIMS_GENERATED', 'CLAIMS_COMMITTED',
     'RISK_ANALYZED', 'RISK_COMMITTED',
@@ -26,12 +25,13 @@ audit_event_type_enum = sa.Enum(
     'RISK_RE_EVALUATED', 'RISK_RE_EVAL_COMMITTED',
     'QA_VALIDATED', 'QA_COMMITTED',
     'MATTER_LOCKED', 'EXPORT_GENERATED',
-    name='auditeventtype',
 )
 
 
 def upgrade() -> None:
-    audit_event_type_enum.create(op.get_bind(), checkfirst=True)
+    # Create the enum type using raw SQL to avoid conflicts with metadata
+    enum_values = ", ".join(f"'{v}'" for v in AUDIT_EVENT_VALUES)
+    op.execute(f"DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'auditeventtype') THEN CREATE TYPE auditeventtype AS ENUM ({enum_values}); END IF; END $$;")
 
     op.create_table(
         'audit_events',
@@ -39,7 +39,7 @@ def upgrade() -> None:
         sa.Column('created_at', sa.DateTime(), nullable=False),
         sa.Column('updated_at', sa.DateTime(), nullable=False),
         sa.Column('matter_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('matters.id'), nullable=False),
-        sa.Column('event_type', audit_event_type_enum, nullable=False),
+        sa.Column('event_type', postgresql.ENUM(*AUDIT_EVENT_VALUES, name='auditeventtype', create_type=False), nullable=False),
         sa.Column('actor_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id'), nullable=True),
         sa.Column('artifact_version_id', postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column('artifact_type', sa.String(), nullable=True),
@@ -51,4 +51,4 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_index('ix_audit_events_matter_id', table_name='audit_events')
     op.drop_table('audit_events')
-    audit_event_type_enum.drop(op.get_bind(), checkfirst=True)
+    op.execute("DROP TYPE IF EXISTS auditeventtype")

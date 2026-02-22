@@ -119,3 +119,4 @@ Search uses hybrid retrieval:
 - Full-text search (PostgreSQL tsvector + GIN index)
 - Reciprocal Rank Fusion (RRF) to merge results
 - Page-number boosting when user references specific pages
+
